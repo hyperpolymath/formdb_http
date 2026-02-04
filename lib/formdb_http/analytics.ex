@@ -23,20 +23,45 @@ defmodule FormdbHttp.Analytics do
   """
   @spec insert_timeseries(reference(), String.t(), DateTime.t(), float(), map(), map()) ::
           {:ok, %{point_id: String.t(), block_id: binary()}} | {:error, term()}
-  def insert_timeseries(_db_handle, series_id, timestamp, value, metadata, provenance) do
-    # Create time-series point
-    point = %{
-      series_id: series_id,
-      timestamp: DateTime.to_iso8601(timestamp),
-      value: value,
-      metadata: metadata,
-      provenance: provenance
-    }
+  def insert_timeseries(db_handle, series_id, timestamp, value, metadata, provenance) do
+    alias FormdbHttp.{FormDB, CBOR}
 
-    # M10 PoC: Just validate and return dummy IDs
+    # Generate unique point ID
     point_id = generate_point_id()
 
-    {:ok, %{point_id: point_id, block_id: <<0, 0, 0, 0, 0, 0, 0, 1>>}}
+    # Create time-series point
+    point = %{
+      type: "TimeSeries",
+      id: point_id,
+      series_id: series_id,
+      timestamp: DateTime.to_iso8601(timestamp),
+      timestamp_unix: DateTime.to_unix(timestamp, :second),
+      value: value,
+      metadata: metadata,
+      provenance: provenance,
+      stored_at: DateTime.utc_now() |> DateTime.to_iso8601()
+    }
+
+    # Encode as CBOR
+    case CBOR.encode(point) do
+      {:ok, cbor_data} ->
+        # Store in database via transaction
+        case FormDB.with_transaction(db_handle, :read_write, fn txn ->
+               FormDB.apply_operation(txn, cbor_data)
+             end) do
+          {:ok, {:ok, block_id}} ->
+            {:ok, %{point_id: point_id, block_id: block_id}}
+
+          {:ok, block_id} when is_binary(block_id) ->
+            {:ok, %{point_id: point_id, block_id: block_id}}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, {:cbor_encode_failed, reason}}
+    end
   end
 
   @doc """
@@ -44,20 +69,62 @@ defmodule FormdbHttp.Analytics do
   """
   @spec query_timeseries(reference(), String.t(), DateTime.t(), DateTime.t(), aggregation(), interval() | nil, integer()) ::
           {:ok, map()} | {:error, term()}
-  def query_timeseries(_db_handle, series_id, start_time, end_time, aggregation, interval, limit) do
-    # M10 PoC: Return empty data
-    # M11+: Query time-series index with aggregation
+  def query_timeseries(db_handle, series_id, start_time, end_time, aggregation, interval, limit) do
+    alias FormdbHttp.{FormDB, CBOR}
 
-    result = %{
-      series_id: series_id,
-      start: DateTime.to_iso8601(start_time),
-      end: DateTime.to_iso8601(end_time),
-      aggregation: aggregation,
-      interval: interval,
-      data: []
-    }
+    # M12: Linear scan through journal (no time-series index yet)
+    # M13+: Use B-tree index on timestamps for efficient queries
 
-    {:ok, result}
+    start_unix = DateTime.to_unix(start_time, :second)
+    end_unix = DateTime.to_unix(end_time, :second)
+
+    case FormDB.get_journal(db_handle, 0) do
+      {:ok, journal_cbor} ->
+        points =
+          case CBOR.decode(journal_cbor) do
+            {:ok, journal_entries} when is_list(journal_entries) ->
+              journal_entries
+              |> Enum.filter(&is_timeseries_point?/1)
+              |> Enum.filter(&matches_series?(&1, series_id))
+              |> Enum.filter(&in_time_range?(&1, start_unix, end_unix))
+              |> Enum.take(limit)
+
+            {:ok, _} ->
+              []
+
+            {:error, _} ->
+              []
+          end
+
+        # Apply aggregation if requested
+        data =
+          case aggregation do
+            :none ->
+              points
+
+            agg when agg in [:avg, :min, :max, :sum, :count] ->
+              if interval do
+                aggregate_by_interval(points, agg, interval, start_time, end_time)
+              else
+                # Aggregate all points into one value
+                [%{value: aggregate(points, agg)}]
+              end
+          end
+
+        result = %{
+          series_id: series_id,
+          start: DateTime.to_iso8601(start_time),
+          end: DateTime.to_iso8601(end_time),
+          aggregation: aggregation,
+          interval: interval,
+          data: data
+        }
+
+        {:ok, result}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -152,5 +219,50 @@ defmodule FormdbHttp.Analytics do
 
   defp generate_point_id do
     "ts_" <> (:crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower))
+  end
+
+  # Helper functions for querying
+
+  defp is_timeseries_point?(%{"type" => "TimeSeries"}), do: true
+  defp is_timeseries_point?(_), do: false
+
+  defp matches_series?(%{"series_id" => sid}, series_id), do: sid == series_id
+  defp matches_series?(_, _), do: false
+
+  defp in_time_range?(%{"timestamp_unix" => ts}, start_unix, end_unix) do
+    ts >= start_unix and ts <= end_unix
+  end
+
+  defp in_time_range?(_, _, _), do: false
+
+  defp aggregate_by_interval(points, aggregation, interval, start_time, end_time) do
+    case parse_interval(interval) do
+      {:ok, interval_seconds} ->
+        # Group points into time buckets
+        buckets = group_by_interval(points, interval_seconds, start_time, end_time)
+
+        # Aggregate each bucket
+        Enum.map(buckets, fn {bucket_start, bucket_points} ->
+          %{
+            timestamp: DateTime.to_iso8601(bucket_start),
+            value: aggregate(bucket_points, aggregation)
+          }
+        end)
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  defp group_by_interval(points, interval_seconds, start_time, _end_time) do
+    start_unix = DateTime.to_unix(start_time, :second)
+
+    points
+    |> Enum.group_by(fn point ->
+      ts = Map.get(point, "timestamp_unix", 0)
+      bucket_index = div(ts - start_unix, interval_seconds)
+      DateTime.add(start_time, bucket_index * interval_seconds, :second)
+    end)
+    |> Enum.sort_by(fn {bucket_start, _} -> DateTime.to_unix(bucket_start, :second) end)
   end
 end

@@ -29,21 +29,41 @@ defmodule FormdbHttp.Geo do
   @spec insert_feature(reference(), geometry(), map(), map()) ::
           {:ok, %{feature_id: String.t(), block_id: binary()}} | {:error, term()}
   def insert_feature(db_handle, geometry, properties, provenance) do
-    # Create GeoJSON feature
+    alias FormdbHttp.{FormDB, CBOR}
+
+    # Generate unique feature ID
+    feature_id = generate_feature_id()
+
+    # Create GeoJSON feature with metadata
     feature = %{
       type: "Feature",
+      id: feature_id,
       geometry: geometry,
       properties: properties,
-      provenance: provenance
+      provenance: provenance,
+      stored_at: DateTime.utc_now() |> DateTime.to_iso8601()
     }
 
     # Encode as CBOR
-    cbor_data = encode_to_cbor(feature)
+    case CBOR.encode(feature) do
+      {:ok, cbor_data} ->
+        # Store in database via transaction
+        case FormDB.with_transaction(db_handle, :read_write, fn txn ->
+               FormDB.apply_operation(txn, cbor_data)
+             end) do
+          {:ok, {:ok, block_id}} ->
+            {:ok, %{feature_id: feature_id, block_id: block_id}}
 
-    # Store in database (M10 PoC just validates)
-    feature_id = generate_feature_id()
+          {:ok, block_id} when is_binary(block_id) ->
+            {:ok, %{feature_id: feature_id, block_id: block_id}}
 
-    {:ok, %{feature_id: feature_id, block_id: <<0, 0, 0, 0, 0, 0, 0, 1>>}}
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, {:cbor_encode_failed, reason}}
+    end
   end
 
   @doc """
@@ -52,16 +72,39 @@ defmodule FormdbHttp.Geo do
   """
   @spec query_by_bbox(reference(), bbox(), map()) ::
           {:ok, map()} | {:error, term()}
-  def query_by_bbox(_db_handle, {minx, miny, maxx, maxy}, _filters) do
-    # M10 PoC: Return empty FeatureCollection
-    # M11+: Query spatial index
+  def query_by_bbox(db_handle, {minx, miny, maxx, maxy}, filters) do
+    alias FormdbHttp.{FormDB, CBOR}
 
-    {:ok,
-     %{
-       type: "FeatureCollection",
-       bbox: [minx, miny, maxx, maxy],
-       features: []
-     }}
+    # M12: Linear scan through journal (no spatial index yet)
+    # M13+: Use R-tree spatial index for efficient queries
+
+    case FormDB.get_journal(db_handle, 0) do
+      {:ok, journal_cbor} ->
+        features =
+          case CBOR.decode(journal_cbor) do
+            {:ok, journal_entries} when is_list(journal_entries) ->
+              journal_entries
+              |> Enum.filter(&is_feature?/1)
+              |> Enum.filter(&bbox_intersects?(&1, {minx, miny, maxx, maxy}))
+              |> Enum.take(Map.get(filters, :limit, 100))
+
+            {:ok, _} ->
+              []
+
+            {:error, _} ->
+              []
+          end
+
+        {:ok,
+         %{
+           type: "FeatureCollection",
+           bbox: [minx, miny, maxx, maxy],
+           features: features
+         }}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -150,5 +193,59 @@ defmodule FormdbHttp.Geo do
 
   defp generate_feature_id do
     "feat_" <> (:crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower))
+  end
+
+  # Helper functions for querying
+
+  defp is_feature?(%{"type" => "Feature"}), do: true
+  defp is_feature?(_), do: false
+
+  defp bbox_intersects?(%{"geometry" => geometry}, {minx, miny, maxx, maxy}) do
+    case extract_bbox(geometry) do
+      {:ok, {fminx, fminy, fmaxx, fmaxy}} ->
+        # Check if bboxes intersect
+        not (fmaxx < minx or fminx > maxx or fmaxy < miny or fminy > maxy)
+
+      :error ->
+        false
+    end
+  end
+
+  defp bbox_intersects?(_, _), do: false
+
+  defp extract_bbox(%{"type" => "Point", "coordinates" => [x, y]}) when is_number(x) and is_number(y) do
+    {:ok, {x, y, x, y}}
+  end
+
+  defp extract_bbox(%{"type" => "LineString", "coordinates" => coords}) when is_list(coords) do
+    compute_bbox(coords)
+  end
+
+  defp extract_bbox(%{"type" => "Polygon", "coordinates" => [ring | _]}) when is_list(ring) do
+    compute_bbox(ring)
+  end
+
+  defp extract_bbox(_), do: :error
+
+  defp compute_bbox(coords) when is_list(coords) do
+    case coords do
+      [] ->
+        :error
+
+      [[x, y] | _rest] ->
+        {minx, miny, maxx, maxy} =
+          Enum.reduce(coords, {x, y, x, y}, fn
+            [cx, cy], {min_x, min_y, max_x, max_y} ->
+              {min(cx, min_x), min(cy, min_y), max(cx, max_x), max(cy, max_y)}
+
+            _, acc ->
+              acc
+          end)
+
+        {:ok, {minx, miny, maxx, maxy}}
+
+      _ ->
+        :error
+    end
   end
 end
