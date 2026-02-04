@@ -6,6 +6,19 @@ defmodule FormdbHttpWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug FormdbHttpWeb.Plugs.RequestLogger
+  end
+
+  # Health check and metrics endpoints (outside versioned API)
+  scope "/", FormdbHttpWeb do
+    pipe_through :api
+
+    get "/health", HealthController, :index
+    get "/health/live", HealthController, :live
+    get "/health/ready", HealthController, :ready
+    get "/health/detailed", HealthController, :detailed
+
+    get "/metrics", MetricsController, :index
   end
 
   scope "/api/v1", FormdbHttpWeb do

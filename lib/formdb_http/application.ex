@@ -11,6 +11,10 @@ defmodule FormdbHttp.Application do
       FormdbHttpWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:formdb_http, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: FormdbHttp.PubSub},
+      # Metrics collector for Prometheus
+      FormdbHttpWeb.Metrics.Collector,
+      # Graceful shutdown handler
+      FormdbHttp.GracefulShutdown,
       # Start a worker by calling: FormdbHttp.Worker.start_link(arg)
       # {FormdbHttp.Worker, arg},
       # Start to serve requests, typically the last entry
