@@ -9,6 +9,13 @@ defmodule FormdbHttpWeb.Router do
     plug FormdbHttpWeb.Plugs.RequestLogger
   end
 
+  pipeline :api_authenticated do
+    plug :accepts, ["json"]
+    plug FormdbHttpWeb.Plugs.RequestLogger
+    plug FormdbHttpWeb.Plugs.Authenticate, auth_enabled: false  # Set to true to enable auth
+    plug FormdbHttpWeb.Plugs.RateLimiter, rate_limit_enabled: false  # Set to true to enable rate limiting
+  end
+
   # Health check and metrics endpoints (outside versioned API)
   scope "/", FormdbHttpWeb do
     pipe_through :api
@@ -19,6 +26,14 @@ defmodule FormdbHttpWeb.Router do
     get "/health/detailed", HealthController, :detailed
 
     get "/metrics", MetricsController, :index
+  end
+
+  # Authentication endpoints
+  scope "/auth", FormdbHttpWeb do
+    pipe_through :api
+
+    post "/token", AuthController, :generate_token
+    post "/verify", AuthController, :verify_token
   end
 
   scope "/api/v1", FormdbHttpWeb do
