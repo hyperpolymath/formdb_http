@@ -39,31 +39,25 @@ defmodule FormdbHttpWeb.Router do
   scope "/api/v1", FormdbHttpWeb do
     pipe_through :api
 
-    # Core API
-    get "/version", ApiController, :version
-
-    # Database operations
+    # Database operations (5 endpoints)
     post "/databases", ApiController, :create_database
+    get "/databases/:db_id", ApiController, :get_database
+    get "/databases/:db_id/journal", ApiController, :get_journal
+    get "/databases/:db_id/blocks/:hash", ApiController, :get_block
     delete "/databases/:db_id", ApiController, :delete_database
 
-    # Transaction operations
-    post "/databases/:db_id/transactions", ApiController, :begin_transaction
-    post "/transactions/:txn_id/commit", ApiController, :commit_transaction
-    post "/transactions/:txn_id/abort", ApiController, :abort_transaction
-    post "/transactions/:txn_id/operations", ApiController, :apply_operation
+    # Geospatial operations (5 endpoints)
+    post "/databases/:db_id/features", GeoController, :insert
+    get "/databases/:db_id/features/bbox", GeoController, :query_bbox
+    get "/databases/:db_id/features/geometry", GeoController, :query_geometry
+    get "/databases/:db_id/features/:feature_id", GeoController, :get_feature
+    get "/databases/:db_id/features/:feature_id/provenance", GeoController, :provenance
 
-    # Schema and journal
-    get "/databases/:db_id/schema", ApiController, :get_schema
-    get "/databases/:db_id/journal", ApiController, :get_journal
-
-    # FormBD-Geo endpoints
-    post "/geo/insert", GeoController, :insert
-    get "/geo/query", GeoController, :query
-    get "/geo/features/:feature_id/provenance", GeoController, :provenance
-
-    # FormBD-Analytics endpoints
-    post "/analytics/timeseries", AnalyticsController, :insert
-    get "/analytics/timeseries", AnalyticsController, :query
-    get "/analytics/timeseries/:series_id/provenance", AnalyticsController, :provenance
+    # Time-series operations (5 endpoints)
+    post "/databases/:db_id/timeseries", AnalyticsController, :insert
+    get "/databases/:db_id/timeseries/:series_id", AnalyticsController, :query
+    get "/databases/:db_id/timeseries/:series_id/aggregate", AnalyticsController, :aggregate
+    get "/databases/:db_id/timeseries/:series_id/provenance", AnalyticsController, :provenance
+    get "/databases/:db_id/timeseries/:series_id/latest", AnalyticsController, :latest
   end
 end

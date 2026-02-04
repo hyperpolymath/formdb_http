@@ -4,7 +4,7 @@
 defmodule FormdbHttpWeb.ApiController do
   use FormdbHttpWeb, :controller
 
-  alias FormdbHttp.FormDB
+  alias FormdbHttp.{FormDB, DatabaseRegistry}
 
   # ============================================================
   # Core Endpoints
@@ -20,21 +20,26 @@ defmodule FormdbHttpWeb.ApiController do
     })
   end
 
-  @doc "POST /api/v1/databases - Open/create database"
-  def create_database(conn, %{"path" => path} = params) do
-    mode = Map.get(params, "mode", "open")
+  @doc "POST /api/v1/databases - Create database"
+  def create_database(conn, %{"name" => name} = params) do
+    description = Map.get(params, "description", "")
+
+    # Generate path from name (M11: in-memory storage, path is just an identifier)
+    # In production, this would map to actual storage location
+    path = "/tmp/formdb_#{name}"
 
     case FormDB.connect(path) do
       {:ok, db_handle} ->
-        # Store handle in process dictionary for this request
-        # In production, use ETS or Agent for persistent storage
+        # Store handle in DatabaseRegistry (persists across HTTP requests)
         db_id = generate_id("db")
-        Process.put(db_id, db_handle)
+        metadata = %{name: name, description: description, path: path}
+        DatabaseRegistry.put(db_id, db_handle, metadata)
 
         json(conn, %{
-          database_id: db_id,
-          path: path,
-          mode: mode
+          db_id: db_id,
+          name: name,
+          description: description,
+          created_at: DateTime.utc_now() |> DateTime.to_iso8601()
         })
 
       {:error, reason} ->
@@ -48,7 +53,7 @@ defmodule FormdbHttpWeb.ApiController do
   def begin_transaction(conn, %{"db_id" => db_id} = params) do
     mode = String.to_existing_atom(Map.get(params, "mode", "read_write"))
 
-    case Process.get(db_id) do
+    case DatabaseRegistry.get(db_id) do
       nil ->
         conn
         |> put_status(:not_found)
@@ -58,7 +63,7 @@ defmodule FormdbHttpWeb.ApiController do
         case FormDB.begin_transaction(db_handle, mode) do
           {:ok, txn_handle} ->
             txn_id = generate_id("txn")
-            Process.put(txn_id, txn_handle)
+            DatabaseRegistry.put(txn_id, txn_handle)
 
             json(conn, %{
               transaction_id: txn_id,
@@ -75,7 +80,7 @@ defmodule FormdbHttpWeb.ApiController do
 
   @doc "POST /api/v1/transactions/:txn_id/operations - Apply operation"
   def apply_operation(conn, %{"txn_id" => txn_id, "operation" => operation_base64}) do
-    case Process.get(txn_id) do
+    case DatabaseRegistry.get(txn_id) do
       nil ->
         conn
         |> put_status(:not_found)
@@ -105,7 +110,7 @@ defmodule FormdbHttpWeb.ApiController do
 
   @doc "POST /api/v1/transactions/:txn_id/commit - Commit transaction"
   def commit_transaction(conn, %{"txn_id" => txn_id}) do
-    case Process.get(txn_id) do
+    case DatabaseRegistry.get(txn_id) do
       nil ->
         conn
         |> put_status(:not_found)
@@ -114,7 +119,7 @@ defmodule FormdbHttpWeb.ApiController do
       txn_handle ->
         case FormDB.commit(txn_handle) do
           :ok ->
-            Process.delete(txn_id)
+            DatabaseRegistry.delete(txn_id)
             json(conn, %{status: "committed"})
 
           {:error, reason} ->
@@ -127,7 +132,7 @@ defmodule FormdbHttpWeb.ApiController do
 
   @doc "POST /api/v1/transactions/:txn_id/abort - Abort transaction"
   def abort_transaction(conn, %{"txn_id" => txn_id}) do
-    case Process.get(txn_id) do
+    case DatabaseRegistry.get(txn_id) do
       nil ->
         conn
         |> put_status(:not_found)
@@ -136,7 +141,7 @@ defmodule FormdbHttpWeb.ApiController do
       txn_handle ->
         case FormDB.abort(txn_handle) do
           :ok ->
-            Process.delete(txn_id)
+            DatabaseRegistry.delete(txn_id)
             json(conn, %{status: "aborted"})
 
           {:error, reason} ->
@@ -149,7 +154,7 @@ defmodule FormdbHttpWeb.ApiController do
 
   @doc "GET /api/v1/databases/:db_id/schema - Get schema"
   def get_schema(conn, %{"db_id" => db_id}) do
-    case Process.get(db_id) do
+    case DatabaseRegistry.get(db_id) do
       nil ->
         conn
         |> put_status(:not_found)
@@ -175,7 +180,7 @@ defmodule FormdbHttpWeb.ApiController do
   def get_journal(conn, %{"db_id" => db_id} = params) do
     since = Map.get(params, "since", "0") |> String.to_integer()
 
-    case Process.get(db_id) do
+    case DatabaseRegistry.get(db_id) do
       nil ->
         conn
         |> put_status(:not_found)
@@ -197,9 +202,60 @@ defmodule FormdbHttpWeb.ApiController do
     end
   end
 
+  @doc "GET /api/v1/databases/:db_id - Get database info"
+  def get_database(conn, %{"db_id" => db_id}) do
+    case DatabaseRegistry.get(db_id) do
+      nil ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: %{code: "NOT_FOUND", message: "Database not found"}})
+
+      _db_handle ->
+        {:ok, metadata} = DatabaseRegistry.get_metadata(db_id)
+
+        json(conn, %{
+          db_id: db_id,
+          name: Map.get(metadata, :name),
+          description: Map.get(metadata, :description),
+          path: Map.get(metadata, :path),
+          status: "connected"
+        })
+    end
+  end
+
+  @doc "GET /api/v1/databases/:db_id/blocks/:hash - Get block by hash"
+  def get_block(conn, %{"db_id" => db_id, "hash" => hash_base64}) do
+    case DatabaseRegistry.get(db_id) do
+      nil ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: %{code: "NOT_FOUND", message: "Database not found"}})
+
+      db_handle ->
+        with {:ok, hash_binary} <- Base.decode64(hash_base64),
+             {:ok, block_data} <- FormDB.get_block(db_handle, hash_binary) do
+          json(conn, %{
+            hash: hash_base64,
+            data: Base.encode64(block_data),
+            size: byte_size(block_data)
+          })
+        else
+          :error ->
+            conn
+            |> put_status(:bad_request)
+            |> json(%{error: %{code: "INVALID_HASH", message: "Invalid base64 encoding"}})
+
+          {:error, reason} ->
+            conn
+            |> put_status(:not_found)
+            |> json(%{error: %{code: "BLOCK_NOT_FOUND", message: to_string(reason)}})
+        end
+    end
+  end
+
   @doc "DELETE /api/v1/databases/:db_id - Close database"
   def delete_database(conn, %{"db_id" => db_id}) do
-    case Process.get(db_id) do
+    case DatabaseRegistry.get(db_id) do
       nil ->
         conn
         |> put_status(:not_found)
@@ -208,7 +264,7 @@ defmodule FormdbHttpWeb.ApiController do
       db_handle ->
         case FormDB.disconnect(db_handle) do
           :ok ->
-            Process.delete(db_id)
+            DatabaseRegistry.delete(db_id)
             json(conn, %{status: "closed"})
 
           {:error, reason} ->

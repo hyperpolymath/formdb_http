@@ -15,6 +15,8 @@ defmodule FormdbHttp.Application do
       FormdbHttpWeb.Metrics.Collector,
       # Graceful shutdown handler
       FormdbHttp.GracefulShutdown,
+      # Database handle registry (persists across HTTP requests)
+      FormdbHttp.DatabaseRegistry,
       # M13: Spatial index for geospatial queries
       FormdbHttp.SpatialIndex,
       # M13: Temporal index for time-series queries

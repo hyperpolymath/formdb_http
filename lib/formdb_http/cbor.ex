@@ -31,7 +31,7 @@ defmodule FormdbHttp.CBOR do
   @doc """
   Decode a CBOR binary to an Elixir term.
   """
-  @spec decode(binary()) :: {:ok, term()} | {:error, term()}
+  @spec decode(binary() | list()) :: {:ok, term()} | {:error, term()}
   def decode(binary) when is_binary(binary) do
     try do
       {value, _rest} = do_decode(binary)
@@ -39,6 +39,11 @@ defmodule FormdbHttp.CBOR do
     rescue
       e -> {:error, Exception.message(e)}
     end
+  end
+
+  def decode(list) when is_list(list) do
+    # Convert list to binary and decode
+    decode(:binary.list_to_bin(list))
   end
 
   # Encoding implementation
