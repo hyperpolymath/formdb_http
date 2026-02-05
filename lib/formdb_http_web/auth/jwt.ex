@@ -112,7 +112,7 @@ defmodule FormdbHttpWeb.Auth.JWT do
                 {:ok, claims} -> {:ok, claims}
                 {:error, _} -> {:error, :invalid_json}
               end
-            {:error, _} -> {:error, :invalid_base64}
+            :error -> {:error, :invalid_base64}
           end
         else
           {:error, :invalid_signature}

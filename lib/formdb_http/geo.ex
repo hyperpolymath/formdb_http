@@ -131,7 +131,7 @@ defmodule FormdbHttp.Geo do
         # Use spatial index if available
         result =
           case SpatialIndex.query(db_id, bbox) do
-            {:ok, feature_ids} when length(feature_ids) > 0 ->
+            {:ok, [_ | _] = feature_ids} ->
               # M13: Use spatial index to get feature IDs, then fetch features
               features = fetch_features_by_ids(db_handle, feature_ids, limit)
 
@@ -300,11 +300,6 @@ defmodule FormdbHttp.Geo do
 
   defp validate_coordinates(_, _), do: :ok
 
-  defp encode_to_cbor(data) do
-    # M10 PoC: Simple JSON encoding, M11+ will use actual CBOR
-    Jason.encode!(data)
-  end
-
   defp generate_feature_id do
     "feat_" <> (:crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower))
   end
@@ -314,7 +309,10 @@ defmodule FormdbHttp.Geo do
   defp is_feature?(%{"type" => "Feature"}), do: true
   defp is_feature?(_), do: false
 
-  defp bbox_intersects?(%{"geometry" => geometry}, {minx, miny, maxx, maxy}) do
+  @doc """
+  Check if a feature's geometry intersects with a bounding box.
+  """
+  def bbox_intersects?(%{"geometry" => geometry}, {minx, miny, maxx, maxy}) do
     case extract_bbox(geometry) do
       {:ok, {fminx, fminy, fmaxx, fmaxy}} ->
         # Check if bboxes intersect
@@ -325,7 +323,7 @@ defmodule FormdbHttp.Geo do
     end
   end
 
-  defp bbox_intersects?(_, _), do: false
+  def bbox_intersects?(_, _), do: false
 
   defp extract_bbox(%{"type" => "Point", "coordinates" => [x, y]}) when is_number(x) and is_number(y) do
     {:ok, {x, y, x, y}}

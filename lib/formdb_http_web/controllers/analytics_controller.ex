@@ -73,10 +73,11 @@ defmodule FormdbHttpWeb.AnalyticsController do
           {:ok, result} ->
             json(conn, result)
 
-          {:error, reason} ->
-            conn
-            |> put_status(:bad_request)
-            |> json(%{error: %{code: "QUERY_FAILED", message: to_string(reason)}})
+          # M10 PoC: Error clause unreachable (always returns {:ok, ...})
+          # {:error, reason} ->
+          #   conn
+          #   |> put_status(:bad_request)
+          #   |> json(%{error: %{code: "QUERY_FAILED", message: to_string(reason)}})
         end
     end
   end
@@ -101,10 +102,11 @@ defmodule FormdbHttpWeb.AnalyticsController do
           {:ok, result} ->
             json(conn, result)
 
-          {:error, reason} ->
-            conn
-            |> put_status(:bad_request)
-            |> json(%{error: %{code: "QUERY_FAILED", message: to_string(reason)}})
+          # M10 PoC: Error clause unreachable (always returns {:ok, ...})
+          # {:error, reason} ->
+          #   conn
+          #   |> put_status(:bad_request)
+          #   |> json(%{error: %{code: "QUERY_FAILED", message: to_string(reason)}})
         end
     end
   end
@@ -122,10 +124,11 @@ defmodule FormdbHttpWeb.AnalyticsController do
           {:ok, provenance_data} ->
             json(conn, provenance_data)
 
-          {:error, reason} ->
-            conn
-            |> put_status(:internal_server_error)
-            |> json(%{error: %{code: "PROVENANCE_FAILED", message: to_string(reason)}})
+          # M10 PoC: Error clause unreachable (always returns {:ok, ...})
+          # {:error, reason} ->
+          #   conn
+          #   |> put_status(:internal_server_error)
+          #   |> json(%{error: %{code: "PROVENANCE_FAILED", message: to_string(reason)}})
         end
     end
   end
@@ -152,10 +155,11 @@ defmodule FormdbHttpWeb.AnalyticsController do
             |> put_status(:not_found)
             |> json(%{error: %{code: "NOT_FOUND", message: "No data points found"}})
 
-          {:error, reason} ->
-            conn
-            |> put_status(:internal_server_error)
-            |> json(%{error: %{code: "QUERY_FAILED", message: to_string(reason)}})
+          # M10 PoC: Error clause unreachable (always returns {:ok, ...})
+          # {:error, reason} ->
+          #   conn
+          #   |> put_status(:internal_server_error)
+          #   |> json(%{error: %{code: "QUERY_FAILED", message: to_string(reason)}})
         end
     end
   end

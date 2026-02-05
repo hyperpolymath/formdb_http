@@ -114,7 +114,7 @@ defmodule FormdbHttpWeb.JournalChannel do
     end
   end
 
-  defp matches_filter?(event, filter) when map_size(filter) == 0 do
+  defp matches_filter?(_event, filter) when map_size(filter) == 0 do
     # No filter, match all
     true
   end

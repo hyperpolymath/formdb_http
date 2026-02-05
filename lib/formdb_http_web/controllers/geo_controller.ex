@@ -66,10 +66,11 @@ defmodule FormdbHttpWeb.GeoController do
             {:ok, feature_collection} ->
               json(conn, feature_collection)
 
-            {:error, reason} ->
-              conn
-              |> put_status(:internal_server_error)
-              |> json(%{error: %{code: "QUERY_FAILED", message: to_string(reason)}})
+            # M10 PoC: Error clause unreachable (always returns {:ok, ...})
+            # {:error, reason} ->
+            #   conn
+            #   |> put_status(:internal_server_error)
+            #   |> json(%{error: %{code: "QUERY_FAILED", message: to_string(reason)}})
           end
         else
           {:error, field} ->
@@ -98,10 +99,11 @@ defmodule FormdbHttpWeb.GeoController do
             {:ok, feature_collection} ->
               json(conn, feature_collection)
 
-            {:error, reason} ->
-              conn
-              |> put_status(:internal_server_error)
-              |> json(%{error: %{code: "QUERY_FAILED", message: to_string(reason)}})
+            # M10 PoC: Error clause unreachable (always returns {:ok, ...})
+            # {:error, reason} ->
+            #   conn
+            #   |> put_status(:internal_server_error)
+            #   |> json(%{error: %{code: "QUERY_FAILED", message: to_string(reason)}})
           end
         else
           {:error, field} ->
@@ -146,10 +148,11 @@ defmodule FormdbHttpWeb.GeoController do
           {:ok, provenance_data} ->
             json(conn, provenance_data)
 
-          {:error, reason} ->
-            conn
-            |> put_status(:internal_server_error)
-            |> json(%{error: %{code: "PROVENANCE_FAILED", message: to_string(reason)}})
+          # M10 PoC: Error clause unreachable (always returns {:ok, ...})
+          # {:error, reason} ->
+          #   conn
+          #   |> put_status(:internal_server_error)
+          #   |> json(%{error: %{code: "PROVENANCE_FAILED", message: to_string(reason)}})
         end
     end
   end

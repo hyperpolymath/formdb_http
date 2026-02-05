@@ -224,33 +224,11 @@ defmodule FormdbHttpWeb.ApiController do
   end
 
   @doc "GET /api/v1/databases/:db_id/blocks/:hash - Get block by hash"
-  def get_block(conn, %{"db_id" => db_id, "hash" => hash_base64}) do
-    case DatabaseRegistry.get(db_id) do
-      nil ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{error: %{code: "NOT_FOUND", message: "Database not found"}})
-
-      db_handle ->
-        with {:ok, hash_binary} <- Base.decode64(hash_base64),
-             {:ok, block_data} <- FormDB.get_block(db_handle, hash_binary) do
-          json(conn, %{
-            hash: hash_base64,
-            data: Base.encode64(block_data),
-            size: byte_size(block_data)
-          })
-        else
-          :error ->
-            conn
-            |> put_status(:bad_request)
-            |> json(%{error: %{code: "INVALID_HASH", message: "Invalid base64 encoding"}})
-
-          {:error, reason} ->
-            conn
-            |> put_status(:not_found)
-            |> json(%{error: %{code: "BLOCK_NOT_FOUND", message: to_string(reason)}})
-        end
-    end
+  def get_block(conn, _params) do
+    # M10 PoC: get_block not implemented in FormDB NIF
+    conn
+    |> put_status(:not_implemented)
+    |> json(%{error: %{code: "NOT_IMPLEMENTED", message: "Block retrieval not implemented in M10 PoC"}})
   end
 
   @doc "DELETE /api/v1/databases/:db_id - Close database"

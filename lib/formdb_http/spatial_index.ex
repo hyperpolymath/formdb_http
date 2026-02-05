@@ -20,7 +20,7 @@ defmodule FormdbHttp.SpatialIndex do
 
   @table_name :spatial_indexes
   @max_entries_per_node 8
-  @min_entries_per_node 3
+  # Note: min_entries_per_node would be used for node underflow handling in production
 
   # Client API
 
@@ -163,7 +163,7 @@ defmodule FormdbHttp.SpatialIndex do
   defp insert_into_internal(node, entry) do
     # Choose subtree with minimum bbox enlargement
     best_child_idx = choose_subtree(node.entries, elem(entry, 1))
-    {child_ref, child_bbox} = Enum.at(node.entries, best_child_idx)
+    {child_ref, _child_bbox} = Enum.at(node.entries, best_child_idx)
 
     # For simplicity, store children inline (in production, use references)
     updated_child = insert_entry(child_ref, entry)
@@ -246,10 +246,7 @@ defmodule FormdbHttp.SpatialIndex do
 
   defp compute_node_bbox(entries) do
     entries
-    |> Enum.map(fn
-      {_feature_id, bbox} -> bbox
-      {_child, bbox} -> bbox
-    end)
+    |> Enum.map(fn {_ref, bbox} -> bbox end)
     |> Enum.reduce(fn {minx1, miny1, maxx1, maxy1}, {minx2, miny2, maxx2, maxy2} ->
       {min(minx1, minx2), min(miny1, miny2), max(maxx1, maxx2), max(maxy1, maxy2)}
     end)

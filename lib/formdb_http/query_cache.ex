@@ -212,18 +212,20 @@ defmodule FormdbHttp.QueryCache do
   # Private functions
 
   defp evict_lru do
-    # Find entry with oldest last_access time
-    case :ets.select(@table_name, [
-           {{:"$1", :_, :_, :"$2"}, [], [{{:"$1", :"$2"}}]}
-         ], 100) do
-      {entries, _continuation} when length(entries) > 0 ->
+    # Find entry with oldest last_access time across ALL entries
+    # Use select/2 (not select/3) to scan entire table
+    entries = :ets.select(@table_name, [
+      {{:"$1", :_, :_, :"$2"}, [], [{{:"$1", :"$2"}}]}
+    ])
+
+    case entries do
+      [_ | _] ->
+        # Find globally oldest entry by last_access time
         {lru_key, _lru_time} = Enum.min_by(entries, &elem(&1, 1))
         :ets.delete(@table_name, lru_key)
+        Logger.debug("Evicted LRU cache entry: #{lru_key}")
 
-      :"$end_of_table" ->
-        :ok
-
-      _ ->
+      [] ->
         :ok
     end
   end

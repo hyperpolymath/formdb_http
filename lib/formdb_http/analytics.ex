@@ -130,7 +130,7 @@ defmodule FormdbHttp.Analytics do
         # Use temporal index if available
         points =
           case TemporalIndex.range_query(db_id, series_id, start_unix, end_unix, limit) do
-            {:ok, point_ids} when length(point_ids) > 0 ->
+            {:ok, [_ | _] = point_ids} ->
               # M13: Use temporal index to get point IDs, then fetch points
               fetch_points_by_ids(db_handle, series_id, point_ids)
 

@@ -224,8 +224,8 @@ defmodule FormdbHttp.TemporalIndex do
     end
   end
 
-  defp find_next_key(table_name, {target_ts, target_id}) do
-    # Find smallest key >= {target_ts, target_id}
+  defp find_next_key(table_name, {target_ts, _target_id}) do
+    # Find smallest key >= {target_ts, _target_id}
     case :ets.next(table_name, {target_ts - 1, "~"}) do
       :"$end_of_table" ->
         :"$end_of_table"

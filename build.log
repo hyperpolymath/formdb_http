@@ -1,0 +1,37 @@
+[1/3] STEP 1/6: FROM docker.io/library/rust:1.78-alpine AS rust-builder
+Trying to pull docker.io/library/rust:1.78-alpine...
+Getting image source signatures
+Copying blob sha256:49051ed1ca8f4921c1272e38c93e561a59c03f02b8711354c5b4f5fa811b4828
+Copying blob sha256:943da6cd74da55b2c0691efe258ac5a167417219b3891e8ab57071aee7e2cda7
+Copying blob sha256:d25f557d7f31bf7acfac935859b5153da41d13c41f2b468d16f729a5b883634f
+Copying config sha256:97d4d27e4ba93331a2598ff6c2caa1ce6afa420a24d4b90bfb6f919afce30dc4
+Writing manifest to image destination
+[1/3] STEP 2/6: RUN apk add --no-cache musl-dev
+fetch https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/APKINDEX.tar.gz
+fetch https://dl-cdn.alpinelinux.org/alpine/v3.20/community/x86_64/APKINDEX.tar.gz
+(1/2) Upgrading musl (1.2.5-r0 -> 1.2.5-r1)
+(2/2) Installing musl-dev (1.2.5-r1)
+OK: 158 MiB in 28 packages
+--> 5009684b885f
+[1/3] STEP 3/6: WORKDIR /app/native_rust
+--> eb72851c97e3
+[1/3] STEP 4/6: COPY native_rust/Cargo.toml native_rust/Cargo.lock ./
+--> 4a98c1c15c21
+[1/3] STEP 5/6: COPY native_rust/src ./src
+--> 79c3e2f93ca4
+[1/3] STEP 6/6: RUN cargo build --release
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded cfg-if v1.0.4
+  Downloaded heck v0.5.0
+  Downloaded proc-macro2 v1.0.106
+  Downloaded inventory v0.3.21
+  Downloaded unicode-ident v1.0.22
+  Downloaded rustler_codegen v0.35.1
+  Downloaded rustler v0.35.1
+  Downloaded regex-lite v0.1.9
+  Downloaded syn v2.0.114
+  Downloaded quote v1.0.44
+  Downloaded libloading v0.8.9
+error: cannot produce cdylib for `formdb_nif v1.0.0 (/app/native_rust)` as the target `x86_64-unknown-linux-musl` does not support these crate types
+Error: building at STEP "RUN cargo build --release": while running runtime: exit status 101

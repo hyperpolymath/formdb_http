@@ -15,8 +15,7 @@ defmodule FormdbHttp.GracefulShutdown do
   use GenServer
   require Logger
 
-  @shutdown_timeout_ms 30_000  # 30 seconds
-  @drain_timeout_ms 25_000     # 25 seconds (leave 5s for final cleanup)
+  @drain_timeout_ms 25_000     # 25 seconds (leave 5s for final cleanup, total 30s)
 
   # Client API
 
